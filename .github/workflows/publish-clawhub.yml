@@ -1,0 +1,45 @@
+name: Publish to ClawHub
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/download.py'
+      - 'SKILL.md'
+      - 'requirements.txt'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install ClawHub CLI
+        run: npm install -g clawhub
+
+      - name: Login to ClawHub
+        run: clawhub login --token "${{ secrets.CLAWHUB_TOKEN }}"
+
+      - name: Get current version
+        id: version
+        run: |
+          # 获取当前最新版本号，默认 1.0.0
+          LATEST=$(clawhub search "douyin-downloader" --json 2>/dev/null | \
+            python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('version','1.0.0'))" 2>/dev/null || echo "1.0.0")
+          echo "current=$LATEST" >> $GITHUB_OUTPUT
+
+      - name: Publish to ClawHub
+        run: |
+          clawhub skill publish . \
+            --slug douyin-downloader \
+            --name "抖音无水印下载器 / Douyin Downloader" \
+            --changelog "Auto publish from commit ${{ github.sha }}" \
+            --tags "latest" \
+            --source-repo "${{ github.repository }}" \
+            --source-commit "${{ github.sha }}"
