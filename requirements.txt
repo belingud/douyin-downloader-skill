@@ -1,0 +1,24 @@
+# 抖音无水印下载器 - 依赖锁定文件
+# 安全策略：全依赖链固定版本号 + SHA256 hash 校验，防止供应链投毒
+# 安装命令：pip install -r requirements.txt --require-hashes
+#
+# 更新依赖时请：
+#   1. 修改版本号
+#   2. 从 https://pypi.org/pypi/<包名>/<版本>/json 获取新 hash
+#   3. 运行 pip install -r requirements.txt --require-hashes 验证
+
+requests==2.33.1 \
+    --hash=sha256:4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a
+    # 依赖：charset-normalizer, idna, urllib3, certifi
+
+charset-normalizer==3.4.7 \
+    --hash=sha256:3dce51d0f5e7951f8bb4900c257dad282f49190fdbebecd4ba99bcc41fef404d
+
+idna==3.13 \
+    --hash=sha256:892ea0cde124a99ce773decba204c5552b69c3c67ffd5f232eb7696135bc8bb3
+
+urllib3==2.6.3 \
+    --hash=sha256:bf272323e553dfb2e87d9bfd225ca7b0f467b919d7bbd355436d3fd37cb0acd4
+
+certifi==2026.4.22 \
+    --hash=sha256:3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a
