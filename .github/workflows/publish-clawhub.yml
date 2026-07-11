@@ -41,5 +41,5 @@ jobs:
             --name "抖音无水印下载器 / Douyin Downloader" \
             --changelog "Auto publish from commit ${{ github.sha }}" \
             --tags "latest" \
-            --source-repo "${{ github.repository }}" \
+            --source-repo "belingud/douyin-downloader-skill" \
             --source-commit "${{ github.sha }}"
