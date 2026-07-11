@@ -2,11 +2,8 @@ name: Publish to ClawHub
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'scripts/download.py'
-      - 'SKILL.md'
-      - 'requirements.txt'
+    tags:
+      - 'v*'
 
 jobs:
   publish:
@@ -26,20 +23,20 @@ jobs:
       - name: Login to ClawHub
         run: clawhub login --token "${{ secrets.CLAWHUB_TOKEN }}"
 
-      - name: Get current version
+      - name: Extract version from tag
         id: version
         run: |
-          # 获取当前最新版本号，默认 1.0.0
-          LATEST=$(clawhub search "douyin-downloader" --json 2>/dev/null | \
-            python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('version','1.0.0'))" 2>/dev/null || echo "1.0.0")
-          echo "current=$LATEST" >> $GITHUB_OUTPUT
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Publish to ClawHub
         run: |
           clawhub skill publish . \
             --slug douyin-downloader \
             --name "抖音无水印下载器 / Douyin Downloader" \
-            --changelog "Auto publish from commit ${{ github.sha }}" \
+            --version "${{ steps.version.outputs.version }}" \
+            --changelog "Release ${{ github.ref_name }}" \
             --tags "latest" \
             --source-repo "belingud/douyin-downloader-skill" \
             --source-commit "${{ github.sha }}"
