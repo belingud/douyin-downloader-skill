@@ -187,7 +187,9 @@ def parse_content(data: dict) -> dict | None:
                     best_url = img["url_list"][0]
 
                 ext = "jpeg" if (".jpeg?" in best_url or ".jpg?" in best_url) else "webp"
-                filename = f"图片{i + 1}.{ext}"
+                name_part = _safe_name(nickname, 12)
+                desc_part = _safe_name(desc, 18)
+                filename = f"{name_part}_{desc_part}_{i + 1}.{ext}"
                 media_list.append({"url": best_url, "filename": filename})
 
             return {
@@ -217,8 +219,14 @@ def parse_content(data: dict) -> dict | None:
 
 
 def _safe_name(text: str, max_len: int = 30) -> str:
-    """去除文件名非法字符并截断"""
-    return re.sub(r'[\\/*?:"<>|\r\n\t]', "", text)[:max_len]
+    """去除非法字符、多余符号、截断"""
+    # 先去掉 emoji 和特殊符号
+    text = re.sub(r'[#@&]', '', text)
+    # 去掉文件名非法字符
+    text = re.sub(r'[\\/*?:"<>|\r\n\t]', '', text)
+    # 合并多余空格并 trim
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text[:max_len]
 
 
 def download_file(url: str, filepath: str, is_image: bool = False) -> bool:
