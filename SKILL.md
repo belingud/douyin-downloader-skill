@@ -4,10 +4,8 @@ description: |
   抖音无水印下载器。支持视频（无水印）+ 图文（原图）下载。
   自动识别链接类型，单个/批量下载。
   原生Python实现，无需额外配置。
-  GitHub: https://github.com/belingud/douyin-downloader-skill
-version: "1.0.5"
-author: belingud
-source_repo: "https://github.com/belingud/douyin-downloader-skill"
+version: "3.0"
+author: Updated from user-provided code
 base_dir: douyin-downloader-skill
 ---
 

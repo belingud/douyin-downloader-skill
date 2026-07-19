@@ -9,6 +9,8 @@
   4. 从 window._ROUTER_DATA JSON 中提取内容
   5. 视频：构造无水印下载地址下载 .mp4
   6. 图文：提取所有图片原图下载 .jpeg
+  7. 降级方案（视频专用）：当 iesdouyin 页面被 WAF 限速时，
+     自动降级到 www.douyin.com/aweme/v1/web/aweme/detail/ API
 """
 import sys
 import os
@@ -117,6 +119,75 @@ def get_router_data(content_id: str, content_type: str) -> dict | None:
 
     print("[!] 页面中未找到有效 _ROUTER_DATA")
     return None
+
+
+def get_detail_api(content_id: str) -> dict | None:
+    """降级方案：从 douyin.com 的 detail JSON API 获取视频信息。
+    
+    dyfetch 项目（HuanNan520/dyfetch）验证此 API 在 iesdouyin WAF 限速时仍可工作。
+    仅支持视频，不支持图文。
+    """
+    api_url = (
+        "https://www.douyin.com/aweme/v1/web/aweme/detail/"
+        f"?aweme_id={content_id}"
+        "&device_platform=webapp&aid=6383&channel=channel_pc_web"
+    )
+    detail_headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+            "Version/16.0 Mobile/15E148 Safari/604.1"
+        ),
+        "Referer": "https://www.douyin.com/",
+    }
+    try:
+        r = requests.get(api_url, headers=detail_headers, timeout=15)
+        if r.status_code != 200 or not r.text.strip():
+            print("[~] detail API 返回为空（可能也被限速）")
+            return None
+        data = r.json()
+        ad = data.get("aweme_detail")
+        if not ad:
+            print(f"[~] detail API 无 aweme_detail（status_code={data.get('status_code')}）")
+            return None
+        return data
+    except Exception as e:
+        print(f"[~] detail API 请求失败: {e}")
+        return None
+
+
+def parse_detail_api(data: dict) -> dict | None:
+    """从 detail JSON API 响应中提取视频信息。"""
+    try:
+        ad = data["aweme_detail"]
+        desc = ad.get("desc", "无标题")
+        nickname = ad.get("author", {}).get("nickname", "未知作者")
+        video_info = ad.get("video", {})
+        play_addr = video_info.get("play_addr", {})
+        url_list = play_addr.get("url_list", [])
+
+        if not url_list:
+            print("[!] detail API 中未找到视频地址")
+            return None
+
+        # 优先选 douyinvod.com 直链（已是无水印），否则取第一个
+        best_url = next(
+            (u for u in url_list if "douyinvod.com" in u),
+            url_list[0]
+        )
+
+        return {
+            "type": "video",
+            "desc": desc,
+            "nickname": nickname,
+            "media": [{
+                "url": best_url,
+                "filename": f"{_safe_name(desc)}_{ad.get('aweme_id', '')}.mp4",
+            }],
+        }
+    except Exception as e:
+        print(f"[!] 解析 detail API 内容出错: {e}")
+        return None
 
 
 def _has_item_list(data: dict) -> bool:
@@ -290,12 +361,31 @@ def run(raw_input: str, output_dir: str = None) -> bool:
         return False
 
     print(f"[+] 内容ID: {content_id} (类型: {content_type})")
-    data = get_router_data(content_id, content_type)
-    if not data:
-        return False
 
-    info = parse_content(data)
+    # ---- 第1层：iesdouyin 页面解析 ----
+    data = get_router_data(content_id, content_type)
+    info = None
+
+    if data:
+        info = parse_content(data)
+
+    # ---- 第2层（降级）：detail JSON API（仅视频） ----
+    if not info and content_type == "video":
+        print("[~] iesdouyin 页面解析失败，尝试降级到 detail JSON API...")
+        data2 = get_detail_api(content_id)
+        if data2:
+            info = parse_detail_api(data2)
+            if info:
+                print("[~] detail API 降级成功 ✅")
+
+    # 都失败了
     if not info:
+        print()
+        print("=" * 50)
+        print("⚠️  下载失败：抖音 iesdouyin 触发了 WAF 限速防护。")
+        print("   这是抖音服务端的间歇性限速，非脚本故障。")
+        print("   建议稍等几分钟到几小时后再重试即可恢复。")
+        print("=" * 50)
         return False
 
     content_type_cn = "图文" if info["type"] == "image" else "视频"

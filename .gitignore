@@ -1,1 +1,4 @@
-# 忽略系统文件
+__pycache__/
+*.mp4
+*.pyc
+*.orig
