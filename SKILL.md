@@ -5,7 +5,7 @@ description: |
   自动识别链接类型，单个/批量下载。
   原生Python实现，无需额外配置。
 version: "3.0"
-author: Updated from user-provided code
+author: belingud
 base_dir: douyin-downloader-skill
 ---
 
