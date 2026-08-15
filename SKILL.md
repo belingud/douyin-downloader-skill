@@ -28,12 +28,14 @@ base_dir: douyin-downloader-skill
   → 正则提取短链
   → GET请求跟随301重定向 → 获取真实URL
   → 识别类型（video/note）
-  → GET iesdouyin.com/share/{type}/{id}/
-  → 解析 window._ROUTER_DATA JSON
-  → 视频：提取 play_addr.uri → 构造无水印播放地址
+  → 第1层：GET iesdouyin.com/share/{type}/{id}/ 解析 window._ROUTER_DATA JSON
+  → 第2层（降级）：GET douyin.com/aweme/v1/web/aweme/detail/ JSON API（2026-08 起需要 ttwid cookie，自动注册后重试）
+  → 视频：提取 play_addr → 无水印直链下载
   → 图文：提取 images[].url_list → 优选 jpeg 原图
   → 流式下载到本地
 ```
+
+> **⚠️ 2026-08-12 起 iesdouyin SSR 接口变更**：分享页不再返回 `_ROUTER_DATA` 数据（只给壳），需走第 2 层 detail API。detail API 首次调用返回空是因为缺 **ttwid cookie**（不是限速），脚本已内置自动注册：POST `ttwid.bytedance.com/ttwid/union/register/` 拿 ticket → 走 ixigua callback 拿 ttwid → 带 `Cookie: ttwid=...` 重试。视频+图文都支持。
 
 ## 目录结构
 
