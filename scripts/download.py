@@ -38,11 +38,11 @@ import json
 
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (Linux; Android 8.0.0; SM-G955U Build/R16NW) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/116.0.0.0 Mobile Safari/537.36"
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
+        "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+        "Version/16.0 Mobile/15E148 Safari/604.1"
     ),
-    "Referer": "https://www.douyin.com/?is_from_mobile_home=1&recommend=1",
+    "Referer": "https://www.douyin.com/",
 }
 
 
@@ -121,11 +121,32 @@ def get_router_data(content_id: str, content_type: str) -> dict | None:
     return None
 
 
+def get_ttwid() -> str | None:
+    """注册匿名 ttwid cookie（2026-08 起 detail API 必须携带，否则返回空）。"""
+    try:
+        s = requests.Session()
+        s.headers.update({"User-Agent": HEADERS["User-Agent"]})
+        r = s.post("https://ttwid.bytedance.com/ttwid/union/register/", json={
+            "region": "cn", "aid": 1768, "needFid": False,
+            "service": "www.ixigua.com", "migrate_info": {},
+            "cbUrlProtocol": "https", "union": True}, timeout=15)
+        url = r.json().get("redirect_url", "")
+        ticket = url.split("ticket=")[1].split("&")[0]
+        s.get(f"https://www.ixigua.com/ttwid/union/register/callback/?aid=1768&ticket={ticket}",
+              timeout=15, allow_redirects=False)
+        for c in s.cookies:
+            if c.name == "ttwid":
+                return c.value
+    except Exception as e:
+        print(f"[~] ttwid 注册失败: {e}")
+    return None
+
+
 def get_detail_api(content_id: str) -> dict | None:
-    """降级方案：从 douyin.com 的 detail JSON API 获取视频信息。
-    
-    dyfetch 项目（HuanNan520/dyfetch）验证此 API 在 iesdouyin WAF 限速时仍可工作。
-    仅支持视频，不支持图文。
+    """降级方案：从 douyin.com 的 detail JSON API 获取内容信息（视频+图文）。
+
+    2026-08 起 iesdouyin SSR 不再返回 item_list；detail API 需带 ttwid cookie，
+    首次返回空时自动注册 ttwid 后重试。
     """
     api_url = (
         "https://www.douyin.com/aweme/v1/web/aweme/detail/"
@@ -140,32 +161,71 @@ def get_detail_api(content_id: str) -> dict | None:
         ),
         "Referer": "https://www.douyin.com/",
     }
-    try:
-        r = requests.get(api_url, headers=detail_headers, timeout=15)
-        if r.status_code != 200 or not r.text.strip():
-            print("[~] detail API 返回为空（可能也被限速）")
+    for attempt in range(2):
+        try:
+            r = requests.get(api_url, headers=detail_headers, timeout=15)
+            if r.status_code == 200 and r.text.strip():
+                data = r.json()
+                ad = data.get("aweme_detail")
+                if ad:
+                    return data
+                print(f"[~] detail API 无 aweme_detail（status_code={data.get('status_code')}）")
+            elif attempt == 0:
+                print("[~] detail API 返回为空，注册 ttwid 后重试...")
+                ttwid = get_ttwid()
+                if ttwid:
+                    detail_headers["Cookie"] = f"ttwid={ttwid}"
+                else:
+                    print("[~] ttwid 注册失败，放弃")
+                    return None
+            else:
+                print("[~] detail API 返回为空（ttwid 后仍为空）")
+        except Exception as e:
+            print(f"[~] detail API 请求失败: {e}")
             return None
-        data = r.json()
-        ad = data.get("aweme_detail")
-        if not ad:
-            print(f"[~] detail API 无 aweme_detail（status_code={data.get('status_code')}）")
-            return None
-        return data
-    except Exception as e:
-        print(f"[~] detail API 请求失败: {e}")
-        return None
+    return None
 
 
 def parse_detail_api(data: dict) -> dict | None:
-    """从 detail JSON API 响应中提取视频信息。"""
+    """从 detail JSON API 响应中提取内容信息（视频或图文）。"""
     try:
         ad = data["aweme_detail"]
         desc = ad.get("desc", "无标题")
         nickname = ad.get("author", {}).get("nickname", "未知作者")
+
+        # ---- 图文 ----
+        images = ad.get("images", [])
+        if images:
+            media_list = []
+            for i, img in enumerate(images):
+                best_url = None
+                for u in img.get("url_list", []):
+                    if ".jpeg?" in u or ".jpg?" in u:
+                        best_url = u
+                        break
+                if not best_url and img.get("url_list"):
+                    best_url = img["url_list"][0]
+                if not best_url:
+                    continue
+                ext = "jpeg" if (".jpeg?" in best_url or ".jpg?" in best_url) else "webp"
+                name_part = _safe_name(nickname, 12)
+                desc_part = _safe_name(desc, 18)
+                filename = f"{name_part}_{desc_part}_{i + 1}.{ext}"
+                media_list.append({"url": best_url, "filename": filename})
+            if media_list:
+                return {
+                    "type": "image",
+                    "desc": desc,
+                    "nickname": nickname,
+                    "media": media_list,
+                }
+            print("[!] detail API 图文未找到图片地址")
+            return None
+
+        # ---- 视频 ----
         video_info = ad.get("video", {})
         play_addr = video_info.get("play_addr", {})
         url_list = play_addr.get("url_list", [])
-
         if not url_list:
             print("[!] detail API 中未找到视频地址")
             return None
@@ -369,8 +429,8 @@ def run(raw_input: str, output_dir: str = None) -> bool:
     if data:
         info = parse_content(data)
 
-    # ---- 第2层（降级）：detail JSON API（仅视频） ----
-    if not info and content_type == "video":
+    # ---- 第2层（降级）：detail JSON API（视频+图文） ----
+    if not info:
         print("[~] iesdouyin 页面解析失败，尝试降级到 detail JSON API...")
         data2 = get_detail_api(content_id)
         if data2:
